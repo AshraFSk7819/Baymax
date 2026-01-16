@@ -2,14 +2,14 @@
 python -m venv venv
 
 **LINIUX:**
-'''bash
+```bash
 source <folder>/bin/activate 
-'''
+```
 **WINDOWS:**
-'''powershell
+```powershell
 <folder>/Scripts/activate.bat
-'''
+```
 **Create a .env file with**
-'''.env
+```.env
 GROQ_API_KEY=your_key_goes_here
-'''
+```
