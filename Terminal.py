@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from groq import Groq
-import prompt
+import AI.AI_prompt as AI_prompt
 
 # Load environment variables
 load_dotenv()
@@ -52,7 +52,7 @@ def main():
             response = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 messages=[
-                    {"role": "system", "content": prompt.SYSTEM_PROMPT},
+                    {"role": "system", "content": AI_prompt.SYSTEM_PROMPT},
                     {"role": "user", "content": user_input}
                 ],
                 temperature=0.3,
