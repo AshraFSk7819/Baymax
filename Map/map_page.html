@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Emergency Response | Hospital Finder</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+  <style>
+    :root {
+      --primary: #ef4444; /* Red */
+      --secondary: #3b82f6; /* Blue */
+      --bg-glass: rgba(15, 23, 42, 0.9);
+      --text-light: #f8fafc;
+      --text-dim: #94a3b8;
+    }
+
+    body { margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background: #020617; overflow: hidden; }
+
+    /* Map Container */
+    #map { height: 100vh; width: 100%; z-index: 1; }
+
+    /* UI Overlay Container */
+    .ui-container {
+      position: absolute;
+      top: 0; left: 0;
+      height: 100vh;
+      width: 400px;
+      max-width: 100%;
+      background: var(--bg-glass);
+      backdrop-filter: blur(10px);
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+      transition: transform 0.3s ease;
+    }
+
+    /* Header */
+    .header { padding: 20px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+    .header h1 { margin: 0; font-size: 1.25rem; color: var(--text-light); display: flex; align-items: center; gap: 10px; }
+    .header p { margin: 5px 0 0; font-size: 0.85rem; color: var(--text-dim); }
+    
+    .badge {
+      background: rgba(239, 68, 68, 0.2); color: #fca5a5;
+      padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: bold; text-transform: uppercase;
+    }
+
+    /* Search/Action Area */
+    .actions { padding: 15px; display: flex; gap: 10px; }
+    
+    .btn-main {
+      flex: 1;
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+    .btn-main:hover { background: #dc2626; }
+    .btn-main:disabled { background: #555; cursor: not-allowed; }
+
+    /* Hospital List */
+    #hospital-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .list-item {
+      background: rgba(255,255,255,0.05);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 10px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .list-item:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.2); }
+    
+    .list-item h3 { margin: 0 0 5px; font-size: 1rem; color: var(--text-light); }
+    .list-item .meta { font-size: 0.8rem; color: var(--text-dim); display: flex; align-items: center; gap: 5px; margin-bottom: 8px; }
+    .list-item .tag { display: inline-block; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; margin-right: 5px; }
+    .tag.emergency { background: rgba(220, 38, 38, 0.3); color: #fecaca; border: 1px solid #ef4444; }
+    .tag.clinic { background: rgba(59, 130, 246, 0.3); color: #bfdbfe; border: 1px solid #3b82f6; }
+
+    .btn-dir {
+      display: inline-block;
+      text-decoration: none;
+      background: rgba(255,255,255,0.1);
+      color: white;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      margin-top: 5px;
+    }
+    .btn-dir:hover { background: var(--secondary); }
+
+    /* Custom Map Markers (CSS Icons) */
+    .user-pulse {
+      width: 20px; height: 20px;
+      background: #3b82f6;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 0 0 rgba(59, 130, 246, 0.4);
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(59, 130, 246, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+    }
+
+    .marker-pin {
+      width: 30px; height: 30px;
+      border-radius: 50% 50% 50% 0;
+      background: var(--primary);
+      position: absolute;
+      transform: rotate(-45deg);
+      left: 50%; top: 50%;
+      margin: -15px 0 0 -15px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+    }
+    .marker-pin i { transform: rotate(45deg); color: white; font-size: 14px; }
+    .marker-pin.clinic { background: var(--secondary); }
+    .marker-pin.emergency { animation: glow 1.5s infinite alternate; }
+
+    @keyframes glow {
+      from { box-shadow: 0 0 5px var(--primary); }
+      to { box-shadow: 0 0 20px var(--primary); }
+    }
+
+    /* Loading Spinner */
+    .loader {
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top: 3px solid white;
+      border-radius: 50%;
+      width: 20px; height: 20px;
+      animation: spin 1s linear infinite;
+      display: none;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+      .ui-container { height: 45vh; bottom: 0; top: auto; width: 100%; border-radius: 20px 20px 0 0; }
+      #map { height: 60vh; position: fixed; top: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="ui-container">
+    <div class="header">
+      <h1><i class="fa-solid fa-heart-pulse" style="color:var(--primary)"></i> LifeLine</h1>
+      <p>Emergency Hospital Locator <span class="badge">India</span></p>
+    </div>
+
+    <div class="actions">
+      <button class="btn-main" onclick="locateUser()" id="findBtn">
+        <span class="loader" id="loader"></span>
+        <span id="btnText"><i class="fa-solid fa-crosshairs"></i> Locate Nearby Help</span>
+      </button>
+    </div>
+
+    <div id="hospital-list">
+      <div style="text-align:center; padding: 20px; color: var(--text-dim);">
+        <i class="fa-solid fa-map-location-dot" style="font-size: 2rem; margin-bottom: 10px;"></i>
+        <p>Tap "Locate Nearby Help" to scan your area.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <script>
+    // 1. Initialize Map with Dark Mode (Professional Feel)
+    const map = L.map("map", { zoomControl: false }).setView([20.5937, 78.9629], 5);
+    
+    // Add Zoom Control to top-right
+    L.control.zoom({ position: 'topright' }).addTo(map);
+
+    // Using CartoDB Dark Matter tiles for high contrast
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: 'abcd',
+      maxZoom: 20
+    }).addTo(map);
+
+    let userMarker = null;
+    let markersLayer = L.layerGroup().addTo(map);
+
+    // 2. Custom Marker Icons
+    const createIcon = (type) => {
+      const isEmergency = type === 'emergency';
+      const colorClass = isEmergency ? 'emergency' : 'clinic';
+      const iconClass = isEmergency ? 'fa-truck-medical' : 'fa-user-doctor';
+      
+      return L.divIcon({
+        className: 'custom-div-icon',
+        html: `<div class="marker-pin ${colorClass}"><i class="fa-solid ${iconClass}"></i></div>`,
+        iconSize: [30, 42],
+        iconAnchor: [15, 42],
+        popupAnchor: [0, -35]
+      });
+    };
+
+    // 3. Main Logic
+    async function locateUser() {
+      const btn = document.getElementById("findBtn");
+      const loader = document.getElementById("loader");
+      const btnText = document.getElementById("btnText");
+
+      // UI Loading State
+      btn.disabled = true;
+      loader.style.display = "inline-block";
+      btnText.innerText = "Scanning...";
+
+      if (!navigator.geolocation) {
+        alert("Geolocation is not supported by your browser");
+        resetUI();
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+
+          updateUserLocation(lat, lon);
+          await loadHospitals(lat, lon);
+          
+          resetUI();
+        },
+        (err) => {
+          alert("Unable to retrieve location. Please enable GPS.");
+          resetUI();
+        },
+        { enableHighAccuracy: true }
+      );
+    }
+
+    function resetUI() {
+      const btn = document.getElementById("findBtn");
+      document.getElementById("loader").style.display = "none";
+      document.getElementById("btnText").innerHTML = '<i class="fa-solid fa-rotate-right"></i> Scan Again';
+      btn.disabled = false;
+    }
+
+    function updateUserLocation(lat, lon) {
+      if (userMarker) map.removeLayer(userMarker);
+
+      // Custom pulsing blue dot
+      const pulseIcon = L.divIcon({
+        className: 'user-pulse',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      });
+
+      userMarker = L.marker([lat, lon], { icon: pulseIcon }).addTo(map);
+      map.flyTo([lat, lon], 14, { duration: 1.5 });
+    }
+
+    async function loadHospitals(lat, lon) {
+      // Overpass API Query (Optimized)
+      const query = `
+        [out:json][timeout:25];
+        (
+          node["amenity"="hospital"](around:5000,${lat},${lon});
+          way["amenity"="hospital"](around:5000,${lat},${lon});
+          node["amenity"="clinic"](around:5000,${lat},${lon});
+        );
+        out center tags;
+      `;
+
+      try {
+        const res = await fetch("https://overpass-api.de/api/interpreter", {
+          method: "POST",
+          body: query,
+        });
+        const data = await res.json();
+        renderResults(data.elements, lat, lon);
+      } catch (e) {
+        console.error(e);
+        document.getElementById("hospital-list").innerHTML = `<p style="color:red; text-align:center">Error fetching data.</p>`;
+      }
+    }
+
+    function renderResults(elements, userLat, userLon) {
+      markersLayer.clearLayers();
+      const listContainer = document.getElementById("hospital-list");
+      listContainer.innerHTML = "";
+
+      if (elements.length === 0) {
+        listContainer.innerHTML = `<p style="text-align:center; color:#ccc">No hospitals found within 5km.</p>`;
+        return;
+      }
+
+      // Sort by distance (simple approx)
+      elements.sort((a, b) => {
+        const latA = a.lat || a.center.lat;
+        const lonA = a.lon || a.center.lon;
+        const latB = b.lat || b.center.lat;
+        const lonB = b.lon || b.center.lon;
+        return distance(userLat, userLon, latA, lonA) - distance(userLat, userLon, latB, lonB);
+      });
+
+      elements.forEach(h => {
+        const hLat = h.lat || h.center?.lat;
+        const hLon = h.lon || h.center?.lon;
+        if (!hLat || !hLon) return;
+
+        const name = h.tags.name || "Unnamed Medical Facility";
+        const isEmergency = h.tags.emergency === "yes";
+        const type = isEmergency ? 'emergency' : 'clinic';
+
+        // Add Marker to Map
+        const marker = L.marker([hLat, hLon], { icon: createIcon(type) })
+          .bindPopup(`
+            <div style="font-family:sans-serif;">
+              <strong style="color:#333">${name}</strong><br>
+              ${isEmergency ? '<span style="color:red; font-weight:bold">🚨 Emergency Room</span>' : '<span style="color:blue">🏥 Medical Clinic</span>'}
+            </div>
+          `)
+          .addTo(markersLayer);
+
+        // Add Item to Sidebar List
+        const div = document.createElement("div");
+        div.className = "list-item";
+        div.innerHTML = `
+          <h3>${name}</h3>
+          <div class="meta">
+            ${isEmergency ? '<span class="tag emergency">EMERGENCY</span>' : '<span class="tag clinic">CLINIC</span>'}
+            <span>${(distance(userLat, userLon, hLat, hLon)).toFixed(1)} km away</span>
+          </div>
+          <a href="https://www.google.com/maps/dir/?api=1&destination=${hLat},${hLon}" 
+             target="_blank" class="btn-dir">
+             <i class="fa-solid fa-diamond-turn-right"></i> Navigate
+          </a>
+        `;
+
+        // Interactive: Click list item -> Fly to map marker
+        div.addEventListener("click", () => {
+          map.flyTo([hLat, hLon], 16);
+          marker.openPopup();
+        });
+
+        listContainer.appendChild(div);
+      });
+    }
+
+    // Haversine Distance Helper (in km)
+    function distance(lat1, lon1, lat2, lon2) {
+      const R = 6371; 
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+  </script>
+</body>
+</html>
